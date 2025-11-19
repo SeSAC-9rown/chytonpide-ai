@@ -5,10 +5,10 @@ import shutil
 
 # --- 설정 ---
 # 스크린샷에 보이는 폴더 경로 (healthy, diseased 폴더가 들어있는 곳)
-SRC_ROOT = Path(r"C:\Users\Junhyeok\Desktop\grown\healthy_split")
+SRC_ROOT = Path(r"Folder_Path_Here")
 
 # 결과가 저장될 폴더
-DST_ROOT = Path(r"C:\Users\Junhyeok\Desktop\healthy\dataset_final_384")
+DST_ROOT = Path(r"Folder_Path_Here")
 
 TARGET_SIZE = (384, 384)
 VAL_SPLIT = 0.2
