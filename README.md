@@ -101,6 +101,8 @@ python predict_det.py --model runs/detect/exp1/weights/best.pt --source image.jp
 
 ### 3. PLA (엽면적) 계산
 
+YOLO 모델의 "scale" 클래스를 기준으로 식물의 엽면적(PLA)을 자동으로 계산합니다.
+
 #### 기본 사용
 ```bash
 # 기본 모델 경로로 실행
@@ -121,6 +123,20 @@ python calculate_pla.py --source test_images/plant.jpg
 # 특정 모델 사용
 python calculate_pla.py --source test_images/plant.jpg --model runs/detect/det_exp1/weights/best.pt
 ```
+
+#### 주요 기능
+- **YOLO 기반 Scale 마커 검출**: "scale" 클래스를 사용한 정확한 스케일 계산
+- **HSV 색상 범위 기반 PLA 계산**: 초록색 범위(H: 35~85)로 엽면적 추출
+- **자동 디버그 이미지 생성**:
+  - 원본 식물 이미지 (`crop.jpg`)
+  - 초록색 감지 마스크 (`green_mask.jpg`)
+  - 감지 영역을 시각화한 오버레이 (`overlay.jpg`)
+- **상세 JSON 결과**: Scale 마커 정보, 각 식물의 PLA, 통계 데이터
+- **동적 폴더 생성**: 실행할 때마다 새로운 `predictN/` 폴더 자동 생성
+
+#### 요구사항
+- YOLO 모델에 **"scale" 클래스**가 학습되어 있어야 함
+- 이미지에 **지름 16mm의 scale 마커**가 포함되어야 함
 
 ## 설정 오버라이드 옵션
 
@@ -207,11 +223,21 @@ runs/predict_det/
 runs/pla/predict/
 ├── predict/                       # 첫 번째 실행
 │   ├── image_results.json         # PLA 계산 결과 JSON
-│   └── crop/                      # Crop 이미지
+│   ├── scale/                     # Scale 마커 크롭
+│   │   └── image_scale_marker.jpg
+│   ├── debug/                     # 디버그 이미지
+│   │   ├── image_plant_1_crop.jpg
+│   │   ├── image_plant_1_green_mask.jpg
+│   │   ├── image_plant_1_overlay.jpg
+│   │   ├── image_plant_2_crop.jpg
+│   │   └── ...
+│   └── crop/                      # 최종 식물 크롭
 │       ├── image_plant_1_95.jpg
 │       └── image_plant_2_87.jpg
 ├── predict2/                      # 두 번째 실행
 │   ├── image_results.json
+│   ├── scale/
+│   ├── debug/
 │   └── crop/
 │       └── ...
 └── predict3/                      # 세 번째 실행
@@ -224,8 +250,18 @@ runs/pla/predict/
   "timestamp": "2025-01-20T10:30:45.123456",
   "image": "path/to/image.jpg",
   "model": "path/to/model.pt",
+  "scale_marker": {
+    "class_name": "scale",
+    "confidence": 0.98,
+    "box": {"x1": 50, "y1": 60, "x2": 150, "y2": 160},
+    "center_x": 100.0,
+    "center_y": 110.0,
+    "diameter_pixel": 100.0,
+    "mm_per_pixel": 0.16,
+    "crop_box": {"x1": 30, "y1": 40, "x2": 170, "y2": 180}
+  },
   "scale": {
-    "mm_per_pixel": 0.0245,
+    "mm_per_pixel": 0.16,
     "sticker_diameter_mm": 16.0
   },
   "total_plants": 2,
@@ -237,13 +273,32 @@ runs/pla/predict/
       "green_pixels": 15000,
       "pla_mm2": 9000.5,
       "pla_cm2": 90.01
+    },
+    {
+      "plant_id": 2,
+      "box": {"x1": 350, "y1": 200, "x2": 550, "y2": 450},
+      "confidence": 0.92,
+      "green_pixels": 12000,
+      "pla_mm2": 7200.4,
+      "pla_cm2": 72.00
     }
   ],
   "statistics": {
-    "total_pla_cm2": 180.02,
-    "average_pla_cm2": 90.01,
-    "min_pla_cm2": 90.01,
+    "total_pla_cm2": 162.01,
+    "average_pla_cm2": 81.01,
+    "min_pla_cm2": 72.00,
     "max_pla_cm2": 90.01
   }
 }
 ```
+
+**주요 필드 설명**:
+- `scale_marker`: YOLO로 감지된 scale 마커의 정보
+  - `confidence`: Scale 마커 감지 신뢰도
+  - `diameter_pixel`: Scale 마커의 픽셀 단위 지름
+  - `mm_per_pixel`: 이를 통해 계산된 스케일 (mm/px)
+- `plants`: 각 식물의 PLA 계산 결과
+  - `green_pixels`: 초록색으로 감지된 픽셀 수
+  - `pla_mm2`: 엽면적 (제곱밀리미터)
+  - `pla_cm2`: 엽면적 (제곱센티미터)
+- `statistics`: 모든 식물의 통계 요약
