@@ -1,0 +1,51 @@
+{
+  "timestamp": "2025-11-24T13:13:52.184495",
+  "image": "predict_image\\test4.jpg",
+  "model": "runs\\detect\\det_exp1\\weights\\best.pt",
+  "scale_marker": {
+    "class_name": "scale",
+    "confidence": 0.7638200521469116,
+    "box": {
+      "x1": 387,
+      "y1": 2547,
+      "x2": 699,
+      "y2": 2818
+    },
+    "center_x": 543.0,
+    "center_y": 2682.5,
+    "diameter_pixel": 312.0,
+    "mm_per_pixel": 0.05128205128205128,
+    "crop_box": {
+      "x1": 315,
+      "y1": 2454,
+      "x2": 771,
+      "y2": 2910
+    }
+  },
+  "scale": {
+    "mm_per_pixel": 0.05128205128205128,
+    "sticker_diameter_mm": 16.0
+  },
+  "total_plants": 1,
+  "plants": [
+    {
+      "plant_id": 1,
+      "box": {
+        "x1": 332,
+        "y1": 573,
+        "x2": 2719,
+        "y2": 3032
+      },
+      "confidence": 0.8917296528816223,
+      "green_pixels": 2369535,
+      "pla_mm2": 6231.5187376725835,
+      "pla_cm2": 62.31518737672584
+    }
+  ],
+  "statistics": {
+    "total_pla_cm2": 62.31518737672584,
+    "average_pla_cm2": 62.31518737672584,
+    "min_pla_cm2": 62.31518737672584,
+    "max_pla_cm2": 62.31518737672584
+  }
+}
