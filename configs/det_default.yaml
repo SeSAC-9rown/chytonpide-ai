@@ -1,0 +1,24 @@
+# Object Detection 기본 설정
+dataset:
+  path: "C:/Users/sega0/Desktop/grown/yolo11/dataset/data.yaml"
+  imgsz: 640
+
+# 모델 설정
+model:
+  name: "yolo11n.pt"  # yolo11s.pt, yolo11m.pt 등으로 변경 가능
+
+# 학습 설정
+training:
+  epochs: 50
+  batch: 16
+  workers: 8
+  device: 0  # 0: GPU, cpu: CPU
+  seed: 42
+  cache: false
+  augment: true 
+  verbose: true
+
+# 실험 설정
+experiment:
+  base_name: "det_exp"
+  project_dir: "runs/detect"

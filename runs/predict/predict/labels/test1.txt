@@ -1,0 +1,2 @@
+0.81 healthy
+0.19 unhealthy

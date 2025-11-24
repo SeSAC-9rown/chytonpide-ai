@@ -1,0 +1,30 @@
+augmentation:
+  auto_augment: randaugment
+  degrees: 10.0
+  erasing: 0.1
+  fliplr: 0.5
+  flipud: 0.0
+  hsv_h: 0.01
+  hsv_s: 0.3
+  hsv_v: 0.2
+  perspective: 0.0
+  scale: 0.2
+  shear: 0.0
+  translate: 0.05
+dataset:
+  imgsz: 640
+  path: C:/Users/sega0/Desktop/grown/yolo11/dataset/data.yaml
+experiment:
+  base_name: det_exp
+  project_dir: runs/detect
+model:
+  name: yolo11n.pt
+training:
+  augment: true
+  batch: 16
+  cache: false
+  device: 0
+  epochs: 50
+  seed: 42
+  verbose: true
+  workers: 8

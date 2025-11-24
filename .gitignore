@@ -1,0 +1,6 @@
+# YOLO 사전학습 모델
+yolo11n-cls.pt
+yolo11n.pt
+
+# 변경 기록
+CHANGELOG.md

@@ -1,0 +1,6 @@
+생성 시간: 2025-11-24 10:53:33
+기본 설정: configs/det_default.yaml
+생성된 설정: configs\det_experiment1.yaml
+
+변경된 설정:
+  • augmentation: configs/aug_light.yaml 적용

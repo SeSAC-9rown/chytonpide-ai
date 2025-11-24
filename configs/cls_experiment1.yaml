@@ -1,0 +1,21 @@
+# Experiment 1 설정
+dataset:
+  path: "C:/Users/sega0/Desktop/grown/cls_yolo11/dataset"
+  imgsz: 224
+
+model:
+  name: "yolo11n-cls.pt"
+
+training:
+  epochs: 50
+  batch: 32
+  workers: 8
+  device: 0
+  seed: 42
+  cache: true
+  augment: false
+  verbose: true
+
+experiment:
+  base_name: "exp1"
+  project_dir: "runs/classify"

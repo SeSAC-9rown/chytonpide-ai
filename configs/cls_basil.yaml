@@ -1,0 +1,36 @@
+# Basil Health 분류 실험
+dataset:
+  path: "C:/Users/sega0/Desktop/grown/cls_yolo11/dataset"
+  imgsz: 224
+
+model:
+  name: "yolo11n-cls.pt"
+
+training:
+  epochs: 100  # 더 많은 에포크
+  batch: 16    # 배치 크기 줄임
+  workers: 8
+  device: 0
+  seed: 42
+  cache: true
+  augment: true  # 데이터 증강 활성화
+  verbose: true
+
+# Augmentation 설정
+augmentation:
+  hsv_h: 0.015    # 색상 변환 (0.0-1.0)
+  hsv_s: 0.7      # 채도 변환 (0.0-1.0)
+  hsv_v: 0.4      # 명도 변환 (0.0-1.0)
+  degrees: 0.0    # 회전 각도 (-180~180)
+  translate: 0.1  # 이동 (0.0-1.0)
+  scale: 0.5      # 스케일 (0.0-1.0)
+  shear: 0.0      # 전단 변환 (-180~180)
+  perspective: 0.0  # 원근 변환 (0.0-0.001)
+  flipud: 0.0     # 상하 반전 확률 (0.0-1.0)
+  fliplr: 0.5     # 좌우 반전 확률 (0.0-1.0)
+  erasing: 0.4    # 랜덤 지우기 (0.0-1.0)
+  auto_augment: "randaugment"  # randaugment, autoaugment, augmix
+
+experiment:
+  base_name: "basil_exp"
+  project_dir: "runs/classify"
