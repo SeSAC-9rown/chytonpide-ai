@@ -39,6 +39,7 @@ yolo_project/
 ├── train_det.py                # 탐지 학습 스크립트
 ├── predict_cls.py              # 분류 예측 스크립트
 ├── predict_det.py              # 탐지 예측 스크립트
+├── calculate_pla.py            # PLA(엽면적) 계산 스크립트
 │
 ├── yolo11n-cls.pt              # 분류 모델 (사전학습)
 ├── yolo11n.pt                  # 탐지 모델 (사전학습)
@@ -96,6 +97,29 @@ python predict_det.py --model runs/detect/exp1/weights/best.pt --source image.jp
 
 # crop만 비활성화
 python predict_det.py --model runs/detect/exp1/weights/best.pt --source image.jpg --no-crop
+```
+
+### 3. PLA (엽면적) 계산
+
+#### 기본 사용
+```bash
+# 기본 모델 경로로 실행
+python calculate_pla.py --source path/to/image.jpg
+
+# 커스텀 모델 경로 지정
+python calculate_pla.py --source path/to/image.jpg --model runs/detect/det_exp1/weights/best.pt
+
+# 결과 저장 디렉토리 지정
+python calculate_pla.py --source path/to/image.jpg --output custom_output_dir
+```
+
+#### 사용 예시
+```bash
+# 단일 이미지 분석
+python calculate_pla.py --source test_images/plant.jpg
+
+# 특정 모델 사용
+python calculate_pla.py --source test_images/plant.jpg --model runs/detect/det_exp1/weights/best.pt
 ```
 
 ## 설정 오버라이드 옵션
@@ -177,3 +201,49 @@ runs/predict_det/
 ```
 
 **파일명 형식**: `{원본이름}_{클래스명}_{번호}_{신뢰도}.jpg`
+
+### PLA (엽면적) 계산
+```
+runs/pla/predict/
+├── predict/                       # 첫 번째 실행
+│   ├── image_results.json         # PLA 계산 결과 JSON
+│   └── crop/                      # Crop 이미지
+│       ├── image_plant_1_95.jpg
+│       └── image_plant_2_87.jpg
+├── predict2/                      # 두 번째 실행
+│   ├── image_results.json
+│   └── crop/
+│       └── ...
+└── predict3/                      # 세 번째 실행
+    └── ...
+```
+
+**JSON 결과 파일 구조**:
+```json
+{
+  "timestamp": "2025-01-20T10:30:45.123456",
+  "image": "path/to/image.jpg",
+  "model": "path/to/model.pt",
+  "scale": {
+    "mm_per_pixel": 0.0245,
+    "sticker_diameter_mm": 16.0
+  },
+  "total_plants": 2,
+  "plants": [
+    {
+      "plant_id": 1,
+      "box": {"x1": 100, "y1": 150, "x2": 300, "y2": 400},
+      "confidence": 0.95,
+      "green_pixels": 15000,
+      "pla_mm2": 9000.5,
+      "pla_cm2": 90.01
+    }
+  ],
+  "statistics": {
+    "total_pla_cm2": 180.02,
+    "average_pla_cm2": 90.01,
+    "min_pla_cm2": 90.01,
+    "max_pla_cm2": 90.01
+  }
+}
+```
