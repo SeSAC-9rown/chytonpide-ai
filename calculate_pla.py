@@ -37,6 +37,10 @@ def calculate_pla_workflow(image_path, model_path, output_dir=None):
     result_dir.mkdir(parents=True, exist_ok=True)
     crop_dir = result_dir / "crop"
     crop_dir.mkdir(parents=True, exist_ok=True)
+    scale_dir = result_dir / "scale"
+    scale_dir.mkdir(parents=True, exist_ok=True)
+    debug_dir = result_dir / "debug"
+    debug_dir.mkdir(parents=True, exist_ok=True)
 
     # 1. 이미지 로드
     img = cv2.imread(str(image_path))
@@ -47,53 +51,80 @@ def calculate_pla_workflow(image_path, model_path, output_dir=None):
     original_h, original_w = img.shape[:2]
     image_name = Path(image_path).stem
 
-    # ---------------------------------------------------------
-    # STEP 1: 스케일 계산 (빨간색 스티커 찾기 - 지름 16mm)
-    # ---------------------------------------------------------
-    hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
-
-    # 빨간색은 HSV에서 0~10, 170~180 두 구간에 걸쳐 있습니다.
-    lower_red1 = np.array([0, 100, 100])
-    upper_red1 = np.array([10, 255, 255])
-    lower_red2 = np.array([170, 100, 100])
-    upper_red2 = np.array([180, 255, 255])
-
-    mask1 = cv2.inRange(hsv, lower_red1, upper_red1)
-    mask2 = cv2.inRange(hsv, lower_red2, upper_red2)
-    red_mask = mask1 + mask2
-
-    # 노이즈 제거를 위한 모폴로지 연산
+    # 노이즈 제거를 위한 모폴로지 연산 (공통 kernel 정의)
     kernel = np.ones((3, 3), np.uint8)
-    red_mask = cv2.morphologyEx(red_mask, cv2.MORPH_OPEN, kernel)
-
-    # 윤곽선 검출
-    contours, _ = cv2.findContours(red_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-    mm_per_pixel = 0
-
-    if contours:
-        # 가장 큰 빨간색 영역을 스티커로 간주
-        largest_contour = max(contours, key=cv2.contourArea)
-
-        # 외접원(Enclosing Circle)을 구해서 지름 픽셀 계산
-        ((x, y), radius) = cv2.minEnclosingCircle(largest_contour)
-        diameter_pixel = radius * 2
-
-        # 스케일 계산 (실제 지름 16mm / 픽셀 지름)
-        real_diameter_mm = 16.0
-        mm_per_pixel = real_diameter_mm / diameter_pixel
-
-        print(f"[Info] 스티커 감지됨: 지름 {diameter_pixel:.2f}px")
-        print(f"[Scale] 1 Pixel = {mm_per_pixel:.4f} mm")
-    else:
-        print("[Error] 빨간색 스티커를 찾을 수 없습니다. 계산을 중단합니다.")
-        return None
 
     # ---------------------------------------------------------
-    # STEP 2: YOLO로 식물 검출 및 Crop
+    # STEP 1: YOLO로 scale 마커 검출
     # ---------------------------------------------------------
     model = YOLO(str(model_path))
     results = model(img)
+
+    mm_per_pixel = 0
+    scale_marker_info = None
+
+    # scale 클래스 찾기
+    for result in results:
+        boxes = result.boxes
+        # 모델의 클래스명 확인
+        class_names = result.names  # {0: 'class_name', ...}
+
+        for box in boxes:
+            cls_id = int(box.cls[0])
+            cls_name = class_names.get(cls_id, "unknown")
+
+            # "scale" 클래스 찾기
+            if cls_name.lower() == "scale":
+                x1, y1, x2, y2 = map(int, box.xyxy[0])
+                confidence = float(box.conf[0])
+
+                # scale 마커의 중심과 크기
+                cx = (x1 + x2) / 2
+                cy = (y1 + y2) / 2
+                width = x2 - x1
+                height = y2 - y1
+                diameter_pixel = max(width, height)  # 더 긴 쪽을 지름으로 사용
+
+                # 스케일 계산 (실제 지름 16mm / 픽셀 지름)
+                real_diameter_mm = 16.0
+                mm_per_pixel = real_diameter_mm / diameter_pixel
+
+                print(f"[Info] Scale 마커 감지됨: 지름 {diameter_pixel:.2f}px, 신뢰도 {confidence:.2%}")
+                print(f"[Scale] 1 Pixel = {mm_per_pixel:.4f} mm")
+
+                # scale 마커 크롭
+                margin = int(diameter_pixel * 0.2) + 10
+                crop_x1 = max(0, int(cx - diameter_pixel / 2 - margin))
+                crop_y1 = max(0, int(cy - diameter_pixel / 2 - margin))
+                crop_x2 = min(original_w, int(cx + diameter_pixel / 2 + margin))
+                crop_y2 = min(original_h, int(cy + diameter_pixel / 2 + margin))
+
+                scale_crop = img[crop_y1:crop_y2, crop_x1:crop_x2]
+                scale_marker_info = {
+                    "class_name": "scale",
+                    "confidence": float(confidence),
+                    "box": {"x1": x1, "y1": y1, "x2": x2, "y2": y2},
+                    "center_x": float(cx),
+                    "center_y": float(cy),
+                    "diameter_pixel": float(diameter_pixel),
+                    "mm_per_pixel": float(mm_per_pixel),
+                    "crop_box": {"x1": crop_x1, "y1": crop_y1, "x2": crop_x2, "y2": crop_y2}
+                }
+
+                # scale 마커 크롭 이미지 저장
+                scale_marker_path = scale_dir / f"{image_name}_scale_marker.jpg"
+                cv2.imwrite(str(scale_marker_path), scale_crop)
+                print(f"[Save] Scale 마커 저장: {scale_marker_path}")
+
+                break
+
+        if mm_per_pixel > 0:
+            break
+
+    if mm_per_pixel == 0:
+        print("[Error] Scale 마커를 찾을 수 없습니다. 계산을 중단합니다.")
+        print(f"[Info] 사용 가능한 클래스: {class_names if 'class_names' in locals() else 'N/A'}")
+        return None
 
     # 결과 저장용 리스트
     pla_results = []
@@ -101,7 +132,16 @@ def calculate_pla_workflow(image_path, model_path, output_dir=None):
 
     for result in results:
         boxes = result.boxes
-        for idx, box in enumerate(boxes):
+        class_names = result.names
+
+        for box in boxes:
+            cls_id = int(box.cls[0])
+            cls_name = class_names.get(cls_id, "unknown")
+
+            # scale 마커는 건너뛰고 식물만 처리
+            if cls_name.lower() == "scale":
+                continue
+
             plant_count += 1
 
             x1, y1, x2, y2 = map(int, box.xyxy[0])
@@ -153,6 +193,23 @@ def calculate_pla_workflow(image_path, model_path, output_dir=None):
             crop_path = crop_dir / crop_filename
             cv2.imwrite(str(crop_path), plant_crop)
 
+            # HSV 마스크 이미지 저장 (디버그용)
+            # 원본 crop 이미지
+            debug_crop_path = debug_dir / f"{image_name}_plant_{plant_count}_crop.jpg"
+            cv2.imwrite(str(debug_crop_path), plant_crop)
+
+            # 초록색 마스크 이미지 (흰색 = 초록색 감지)
+            debug_mask_path = debug_dir / f"{image_name}_plant_{plant_count}_green_mask.jpg"
+            cv2.imwrite(str(debug_mask_path), green_mask)
+
+            # 마스크를 원본 이미지에 오버레이 (초록색 감지 영역 시각화)
+            mask_overlay = plant_crop.copy()
+            mask_overlay[green_mask > 0] = [0, 255, 0]  # 초록색 감지 영역을 초록색으로 표시
+            alpha = 0.5
+            debug_overlay_path = debug_dir / f"{image_name}_plant_{plant_count}_overlay.jpg"
+            overlay_result = cv2.addWeighted(plant_crop, 1 - alpha, mask_overlay, alpha, 0)
+            cv2.imwrite(str(debug_overlay_path), overlay_result)
+
     # ---------------------------------------------------------
     # 결과 JSON 저장
     # ---------------------------------------------------------
@@ -160,6 +217,7 @@ def calculate_pla_workflow(image_path, model_path, output_dir=None):
         "timestamp": datetime.now().isoformat(),
         "image": str(image_path),
         "model": str(model_path),
+        "scale_marker": scale_marker_info,
         "scale": {
             "mm_per_pixel": mm_per_pixel,
             "sticker_diameter_mm": 16.0
