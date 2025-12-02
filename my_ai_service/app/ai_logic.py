@@ -367,22 +367,7 @@ class BasilAnalyzer:
             logger.info(f"분류 결과: {class_name} ({confidence:.2f}%)")
 
             # -------------------------------------------------
-            # Step 6: 성장 단계 판정 (PLA 기반)
-            # -------------------------------------------------
-            pla_cm2 = pla_result["pla_cm2"]
-            if pla_cm2 < 10:
-                growth_stage = "Seedling"  # 새싹
-            elif pla_cm2 < 30:
-                growth_stage = "Vegetative"  # 영양생장
-            elif pla_cm2 < 60:
-                growth_stage = "Mature"  # 성숙
-            else:
-                growth_stage = "Full Growth"  # 완전 성장
-
-            logger.info(f"성장 단계: {growth_stage} (PLA: {pla_cm2:.2f} cm²)")
-
-            # -------------------------------------------------
-            # Step 7: 최종 결과 생성
+            # Step 6: 최종 결과 생성
             # -------------------------------------------------
             return {
                 "status": "success",
@@ -391,8 +376,7 @@ class BasilAnalyzer:
                     "confidence": f"{confidence:.2f}%",
                     "pla_mm2": pla_result["pla_mm2"],
                     "pla_cm2": pla_result["pla_cm2"],
-                    "leaf_count": leaf_result["leaf_count"],
-                    "growth_stage": growth_stage,
+                    "leaf_count": leaf_result["leaf_count"]
                 },
             }
 
