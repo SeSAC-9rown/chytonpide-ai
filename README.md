@@ -59,7 +59,7 @@ chytonpide-ai/
 
 ## 📊 각 단계 상세
 
-### 1️⃣ YOLO11 객체 탐지 (det_best.pt)
+### 1️⃣ YOLO11 탐지 (det_best.pt)
 - **목표**: Scale 마커(16mm) + 바질 식물 검출
 - **입력**: 원본 이미지
 - **출력**: 2개 클래스 (ID 0=Basil, ID 1=Scale)
@@ -75,7 +75,7 @@ masks = results[0].masks.data.cpu().numpy()  # 여러 마스크 반환
 - **목표**: 바질 이미지를 여러 영역으로 분할
 - **입력**: 바질 크롭 (YOLO 탐지 결과)
 - **출력**: 여러 마스크 (각각이 하나의 객체)
-- **소요시간**: ~1000ms
+- **소요시간**: ~5000ms
 
 ### 3️⃣ Watershed로 겹친 잎 분리 (_count_leaves)
 ```python
@@ -92,12 +92,12 @@ markers = self._separate_overlapping_leaves(mask_uint8)
    - Watershed 수행
 
 3. 분리된 각 영역 검증:
-   - 크기 100px 이상?
-   - 초록색 비율 40% 이상?
+   - 크기 100px 이상
+   - 초록색 비율 40% 이상
    - 잎으로 카운트
 
 **결과**: 잎 개수, 각 잎의 면적
-
+- **소요시간**: ~1000ms
 ### 4️⃣ PLA 계산 (_calculate_pla)
 ```python
 # 초록색 픽셀 기반 면적 계산
@@ -108,7 +108,14 @@ area_mm2 = green_pixel_count * (mm_per_pixel ** 2)
 - **입력**: 바질 크롭 이미지, mm_per_pixel
 - **처리**: HSV 필터 + 모폴로지 연산 (노이즈 제거)
 - **출력**: pla_mm2, pla_cm2, green_pixels
+- **소요시간**: ~100ms
 
+###  YOLO11 분류 (cls_best.pt)
+- **목표**: 바질의 건강여부파악
+- **입력**: 512사이즈 이미지
+- **출력**: 2개 클래스 (Healthy,Unhealthy)
+- **신뢰도**: 0.95
+- **소요시간**: ~400ms
 ---
 
 ## ⏱️ 성능
@@ -116,19 +123,20 @@ area_mm2 = green_pixel_count * (mm_per_pixel ** 2)
 | 단계 | 소요시간 |
 |------|---------|
 | 이미지 전처리 | ~100ms |
-| YOLO11 탐지 | ~800ms |
-| FastSAM 세그멘테이션 | ~1000ms |
+| YOLO11 탐지 | ~5000ms |
+| FastSAM 세그멘테이션 | ~500ms |
 | Watershed + 잎 개수 | ~200ms |
 | PLA 계산 | ~100ms |
 | YOLO 분류 | ~400ms |
-| **총합** | **~2.6초** |
+| **총합** | **~6.2초** |
 
-> 📌 첫 요청: +3000ms (모델 로딩)
+> 📌 첫 요청: ~3000ms (모델 로딩)
 
-실제 서버통신 및 cpu 환경에서 
+약 9.2초 소요됨
 
-약 10~15초 걸림
+(실제 네트워크 환경에 따라 차 발생함)
 
+B2 cpu 환경에서 사용할시 더 늦어질수 있음
 ---
 
 ## 🚀 설치 & 실행
@@ -142,8 +150,8 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 ### Docker
 ```bash
-docker build -t basil-analyzer:v1.0.0 .
-docker run -p 8000:8000 basil-analyzer:v1.0.0
+docker build -t basil-analyzer:v1.2.0 .
+docker run -p 8000:8000 basil-analyzer:v1.2.0
 ```
 
 ---
@@ -165,8 +173,7 @@ curl -X POST "http://localhost:8000/analyze" \
     "confidence": "95.50%",
     "pla_mm2": 2500.45,
     "pla_cm2": 25.00,
-    "leaf_count": 12,
-    "growth_stage": "ADULT"
+    "leaf_count": 12
   }
 }
 ```
@@ -177,8 +184,8 @@ curl -X POST "http://localhost:8000/analyze" \
 - `pla_mm2`: 엽면적 (제곱밀리미터)
 - `pla_cm2`: 엽면적 (제곱센티미터)
 - `leaf_count`: 잎 개수
-- `growth_stage`: 성장 단계 (Sprout/Middle/Adult)
+- `growth_stage`: 성장 단계 (Sprout/Middle/Adult) -> backend 서버에서 잎개수를 바탕으로 계산
 
 ---
 
-**최종 수정**: 2025-11-30
+**최종 수정**: 2025-12-2
