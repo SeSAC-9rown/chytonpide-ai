@@ -28,7 +28,7 @@ chytonpide-ai/
 │   ├── weights/
 │   │   ├── det_best.pt                    # YOLO11 탐지 (Scale + Basil)
 │   │   ├── cls_best.pt                    # YOLO 분류 (Healthy/Unhealthy)
-│   │   └── FastSAM-x.pt                   # FastSAM 모델
+│   │   └── FastSAM-s.pt                   # FastSAM 모델
 │   │
 │   ├── .dockerignore
 │   ├── Dockerfile                         # Docker 이미지
