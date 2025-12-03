@@ -13,16 +13,12 @@ logger = logging.getLogger(__name__)
 # ==========================================
 # 설정
 # ==========================================
-DET_MODEL_PATH = r"C:\Users\sega0\Desktop\chytonpide-ai\my_ai_service\app\weights\det_best.pt"
-CLS_MODEL_PATH = r"C:\Users\sega0\Desktop\chytonpide-ai\my_ai_service\app\weights\cls_best.pt"
-SCALE_REAL_DIAMETER_MM = 16
+DET_MODEL_PATH = r"C:\Users\sega0\Desktop\grwon\git\chytonpide-ai\runs\detect\det_exp1\weights\best.pt"
+CLS_MODEL_PATH = r"C:\Users\sega0\Desktop\grwon\git\chytonpide-ai\runs\classify\test1\weights\best.pt"
+SAM_MODEL_PATH = "sam2.1_t.pt"
+SCALE_REAL_DIAMETER_MM = 16.0
 GREEN_HSV_LOWER = [35, 40, 40]
 GREEN_HSV_UPPER = [85, 255, 255]
-SAVE_DIR = "results"
-
-
-if not os.path.exists(SAVE_DIR):
-    os.makedirs(SAVE_DIR)
 
 
 class BasilAnalyzer:
@@ -31,10 +27,10 @@ class BasilAnalyzer:
 
         self.det_model = YOLO(DET_MODEL_PATH)
         self.cls_model = YOLO(CLS_MODEL_PATH)
-        
-        logger.info("🌿 SAM2 모델 로딩 중...")
-        self.sam_model = SAM("sam2.1_t.pt")
-        
+
+        logger.info(f"🌿 SAM2 모델 로딩 중... ({SAM_MODEL_PATH})")
+        self.sam_model = SAM(SAM_MODEL_PATH)
+
         logger.info("✅ 모델 로딩 완료!")
 
     def _separate_overlapping_leaves(self, mask):
@@ -173,21 +169,30 @@ class BasilAnalyzer:
                     else:
                         logger.info(f"  ❌ 마스크 #{i} 제외 (초록비율: {overlap_ratio*100:.1f}%)")
 
+            # 스크립트 파일명 기반으로 저장 디렉토리 생성
+            script_path = os.path.abspath(__file__)
+            script_name = os.path.splitext(os.path.basename(script_path))[0]  # 확장자 제외한 파일명
+            script_dir = os.path.dirname(script_path)
+            output_dir = os.path.join(script_dir, script_name)
+
+            if not os.path.exists(output_dir):
+                os.makedirs(output_dir)
+
             # 결과 이미지 저장
-            cv2.imwrite(f"{SAVE_DIR}/1_original_crop.jpg", basil_crop_bgr)
-            cv2.imwrite(f"{SAVE_DIR}/2_green_mask.jpg", vis_green_mask)
-            cv2.imwrite(f"{SAVE_DIR}/3_all_sam_masks.jpg", vis_all_masks)
-            cv2.imwrite(f"{SAVE_DIR}/4_watershed_result.jpg", vis_watershed)
-            cv2.imwrite(f"{SAVE_DIR}/5_selected_leaves.jpg", vis_selected)
+            cv2.imwrite(os.path.join(output_dir, f"{script_name}_1_original_crop.jpg"), basil_crop_bgr)
+            cv2.imwrite(os.path.join(output_dir, f"{script_name}_2_green_mask.jpg"), vis_green_mask)
+            cv2.imwrite(os.path.join(output_dir, f"{script_name}_3_all_sam_masks.jpg"), vis_all_masks)
+            cv2.imwrite(os.path.join(output_dir, f"{script_name}_4_watershed_result.jpg"), vis_watershed)
+            cv2.imwrite(os.path.join(output_dir, f"{script_name}_5_selected_leaves.jpg"), vis_selected)
 
             # 최종 오버레이
             overlay = cv2.addWeighted(basil_crop_bgr, 0.5, vis_selected, 0.5, 0)
             cv2.putText(overlay, f"Leaf Count: {leaf_count}", (10, 30),
                        cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
-            cv2.imwrite(f"{SAVE_DIR}/6_final_overlay.jpg", overlay)
+            cv2.imwrite(os.path.join(output_dir, f"{script_name}_6_final_overlay.jpg"), overlay)
 
             logger.info(f"🌿 잎 개수: {leaf_count}개")
-            logger.info(f"💾 결과 이미지 저장됨: {os.path.abspath(SAVE_DIR)}")
+            logger.info(f"💾 결과 이미지 저장됨: {os.path.abspath(output_dir)}")
 
             return {
                 "leaf_count": leaf_count,
@@ -294,15 +299,20 @@ class BasilAnalyzer:
 # 테스트 실행
 # ==========================================
 if __name__ == "__main__":
-    TEST_IMAGE = r"C:\Users\sega0\Desktop\chytonpide-ai\predict_image\test8.jpg"
-    
+    TEST_IMAGE = r"C:\Users\sega0\Desktop\grwon\git\chytonpide-ai\predict_image\test8.jpg"
+
+    script_path = os.path.abspath(__file__)
+    script_name = os.path.splitext(os.path.basename(script_path))[0]
+    script_dir = os.path.dirname(script_path)
+    output_dir = os.path.join(script_dir, script_name)
+
     analyzer = BasilAnalyzer()
     result = analyzer.process(TEST_IMAGE)
-    
+
     print("\n" + "="*50)
     print("📊 분석 결과")
     print("="*50)
-    
+
     if result["status"] == "success":
         data = result["data"]
         print(f"🏥 진단: {data['diagnosis']} ({data['confidence']})")
@@ -312,8 +322,8 @@ if __name__ == "__main__":
         print("\n개별 잎 정보:")
         for leaf in data["leaf_details"]:
             print(f"  - 잎 #{leaf['leaf_id']}: {leaf['area_mm2']} mm² (초록비율: {leaf['overlap_ratio']}%)")
-        
-        print(f"\n💾 시각화 결과 저장 위치: {os.path.abspath(SAVE_DIR)}")
+
+        print(f"\n💾 시각화 결과 저장 위치: {os.path.abspath(output_dir)}")
         print("  - 4_watershed_result.jpg : Watershed 분리 결과")
     else:
         print(f"❌ 에러: {result['message']}")

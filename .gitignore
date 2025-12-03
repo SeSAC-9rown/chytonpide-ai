@@ -1,6 +1,14 @@
-# YOLO 사전학습 모델
 yolo11n-cls.pt
 yolo11n.pt
+FastSAM-s.pt
+FastSAM-x.pt
+sam2.1_b.pt
+sam2.1_t.pt
+sam2.1_l.pt
+PA_MIOU.pth
+best.pt
+.env
+
 
 # 변경 기록
 CHANGELOG.md

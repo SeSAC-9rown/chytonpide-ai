@@ -11,7 +11,7 @@ from ultralytics import YOLO, SAM
 # ==========================================
 # [설정] 로그 및 경고 설정
 # ==========================================
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 warnings.filterwarnings("ignore")
 
@@ -19,17 +19,17 @@ warnings.filterwarnings("ignore")
 # [설정] 모델 및 파일 경로
 # ==========================================
 # 1. YOLO 모델 경로
-DET_MODEL_PATH = r"runs\detect\det_exp1\weights\best.pt"
-CLS_MODEL_PATH = r"runs\classify\test1\weights\best.pt"
+DET_MODEL_PATH = r"C:\Users\sega0\Desktop\grwon\git\chytonpide-ai\runs\detect\det_exp1\weights\best.pt"
+CLS_MODEL_PATH = r"C:\Users\sega0\Desktop\grwon\git\chytonpide-ai\runs\classify\test1\weights\best.pt"
 
 # 2. SAM 모델 경로 (성능 향상을 위해 Large 모델 사용 권장)
 # sam2.1_l.pt (Large)가 Base보다 겹친 잎 분리에 훨씬 강력합니다.
-SAM_MODEL_PATH = "sam2.1_l.pt" 
+SAM_MODEL_PATH = "sam2.1_t.pt" 
 
 # 3. 테스트할 이미지 경로
-TEST_IMAGE_PATH = r"C:\Users\sega0\Desktop\chytonpide-ai\predict_image\test6.jpg"
+TEST_IMAGE_PATH = r"C:\Users\sega0\Desktop\grwon\git\chytonpide-ai\segmentation_code\results\1_original_crop.jpg"
 
-# 4. 기타 설정
+# 4. 기타 설정 
 SCALE_REAL_DIAMETER_MM = 16.0
 GREEN_HSV_LOWER = [35, 40, 40]
 GREEN_HSV_UPPER = [85, 255, 255]
@@ -89,11 +89,11 @@ class IntegratedBasilAnalyzer:
             new_w, new_h = int(w * scale_factor), int(h * scale_factor)
             img_resized = pil_image.resize((new_w, new_h), Image.BILINEAR)
             
-            # 2. 그리드 포인트 생성 (4x4 = 16개의 점을 찍어 물어봄)
+            # 2. 그리드 포인트 생성 (6x6 = 36개의 점을 찍어 물어봄)
             # 잎이 겹쳐있을 때, 각 위치마다 "여기에 뭐가 있어?"라고 물어보는 방식
-            n_points = 4
-            x = np.linspace(new_w * 0.2, new_w * 0.8, n_points)
-            y = np.linspace(new_h * 0.2, new_h * 0.8, n_points)
+            n_points = 6  # 4 → 6으로 증가 (16개 → 36개)
+            x = np.linspace(new_w * 0.15, new_w * 0.85, n_points)  # 범위도 넓힘
+            y = np.linspace(new_h * 0.15, new_h * 0.85, n_points)
             xv, yv = np.meshgrid(x, y)
             points = np.column_stack((xv.ravel(), yv.ravel()))
 
@@ -102,16 +102,37 @@ class IntegratedBasilAnalyzer:
             # 각 포인트에 대해 SAM 추론 실행
             # (한 번에 배치로 넣을 수도 있지만, Ultralytics wrapper 특성상 루프가 안정적일 수 있음)
             logger.info(f"🔍 그리드 탐색 시작 ({len(points)}개 포인트)...")
-            
-            for pt in points:
+            logger.info(f"📐 리사이징된 이미지 크기: {new_w}x{new_h}")
+
+            for idx, pt in enumerate(points):
                 # 점 하나를 프롬프트로 전달 (labels=[1]은 전경/Foreground 의미)
                 # SAM에게 "이 점(pt)에 해당하는 객체를 따줘"라고 요청
-                results = self.sam_model(img_resized, points=[[pt]], labels=[1], verbose=False)
-                
-                if results and results[0].masks:
-                    # 마스크 추출 (가장 신뢰도 높은 것 하나)
-                    mask_data = results[0].masks.data.cpu().numpy()[0] # (H, W)
-                    collected_masks.append(mask_data)
+                try:
+                    logger.debug(f"   포인트 {idx}: {pt}")
+                    results = self.sam_model(img_resized, points=[[pt]], labels=[1], verbose=False)
+
+                    if results and results[0].masks:
+                        # 마스크 추출 (가장 신뢰도 높은 것 하나)
+                        mask_tensor = results[0].masks.data.cpu().numpy()
+                        logger.debug(f"   ✓ 마스크 발견 - 차원: {mask_tensor.shape}")
+
+                        # 마스크 차원 확인 및 처리
+                        if mask_tensor.ndim == 3:  # (N, H, W) 형태
+                            mask_data = mask_tensor[0]
+                        elif mask_tensor.ndim == 2:  # (H, W) 형태
+                            mask_data = mask_tensor
+                        else:
+                            logger.warning(f"⚠️ 예상치 못한 마스크 차원: {mask_tensor.shape}")
+                            continue
+
+                        collected_masks.append(mask_data)
+                    else:
+                        logger.debug(f"   ✗ 마스크 못찾음")
+                except Exception as e:
+                    logger.debug(f"포인트 {pt} 처리 중 오류: {e}")
+                    continue
+
+            logger.info(f"📊 총 {len(collected_masks)}개의 마스크 수집됨")
 
             # 3. 중복 마스크 제거 (NMS와 유사한 로직)
             unique_masks = []
@@ -138,15 +159,27 @@ class IntegratedBasilAnalyzer:
 
             # 4. 결과 정리
             valid_leaf_count = len(unique_masks)
-            
+
             # 시각화용 합치기
             combined_mask = np.zeros((new_h, new_w), dtype=np.uint8)
+            colored_masks = np.zeros((new_h, new_w, 3), dtype=np.uint8)
+
+            # 각 마스크에 다른 색상 부여
             for i, mask in enumerate(unique_masks):
-                # 겹치는 부분을 구별하기 위해 값을 다르게 줄 수도 있지만, 여기선 단순히 합침
+                # 회색톤 마스크 합치기
                 combined_mask = np.maximum(combined_mask, mask * 255)
+
+                # 색상 마스크 생성 (각 잎마다 다른 색)
+                color = (
+                    int(100 + (i * 50) % 155),
+                    int(100 + (i * 100) % 155),
+                    int(100 + (i * 150) % 155)
+                )
+                colored_masks[mask > 0] = color
 
             # 원본 크기로 마스크 복원 (시각화 저장을 위해)
             combined_mask_orig = cv2.resize(combined_mask, (w, h), interpolation=cv2.INTER_NEAREST)
+            colored_masks_orig = cv2.resize(colored_masks, (w, h), interpolation=cv2.INTER_NEAREST)
 
             stage_name, message = self._determine_stage(valid_leaf_count)
 
@@ -155,7 +188,9 @@ class IntegratedBasilAnalyzer:
                 "stage": stage_name,
                 "message": message,
                 "mask": combined_mask_orig,
-                "raw_detected_count": len(collected_masks)
+                "colored_mask": colored_masks_orig,
+                "raw_detected_count": len(collected_masks),
+                "unique_mask_count": valid_leaf_count
             }
 
         except Exception as e:
@@ -266,25 +301,62 @@ class IntegratedBasilAnalyzer:
 
     def _save_visualization(self, original_img, crop_img, growth_info):
         try:
+            # 스크립트 파일명 기반으로 저장 디렉토리 생성
+            script_path = os.path.abspath(__file__)
+            script_dir = os.path.dirname(script_path)
+            script_name = os.path.splitext(os.path.basename(script_path))[0]  # 확장자 제외한 파일명
+
+            output_dir = os.path.join(script_dir, script_name)
+            if not os.path.exists(output_dir):
+                os.makedirs(output_dir)
+
+            # 저장 경로들
+            result_crop_path = os.path.join(output_dir, f"{script_name}_분할결과.jpg")
+            result_original_path = os.path.join(output_dir, f"{script_name}_원본.jpg")
+            result_mask_path = os.path.join(output_dir, f"{script_name}_마스크.jpg")
+            result_colored_mask_path = os.path.join(output_dir, f"{script_name}_색상마스크.jpg")
+
+            # 원본 이미지 저장
+            cv2.imwrite(result_original_path, original_img)
+            logger.info(f"💾 원본 이미지 저장됨: {result_original_path}")
+
             if growth_info and growth_info['mask'] is not None:
                 mask = growth_info['mask']
                 if mask.shape[:2] != crop_img.shape[:2]:
                     mask = cv2.resize(mask, (crop_img.shape[1], crop_img.shape[0]), interpolation=cv2.INTER_NEAREST)
 
+                # 1. 마스크 이미지 저장 (흑백)
+                cv2.imwrite(result_mask_path, mask)
+                logger.info(f"💾 마스크 이미지 저장됨: {result_mask_path}")
+
+                # 2. 색상 마스크 저장 (각 잎마다 다른 색)
+                if "colored_mask" in growth_info:
+                    colored_mask = growth_info['colored_mask']
+                    if colored_mask.shape[:2] != crop_img.shape[:2]:
+                        colored_mask = cv2.resize(colored_mask, (crop_img.shape[1], crop_img.shape[0]), interpolation=cv2.INTER_NEAREST)
+                    cv2.imwrite(result_colored_mask_path, colored_mask)
+                    logger.info(f"💾 색상 마스크 저장됨: {result_colored_mask_path}")
+
+                # 3. 초록색 오버레이 분할 결과
                 color_mask = np.zeros_like(crop_img)
                 color_mask[mask > 0] = [0, 255, 0]
-                
+
                 overlay_crop = cv2.addWeighted(crop_img, 0.7, color_mask, 0.3, 0)
-                
+
                 txt = f"{growth_info['stage']} (Leaves: {growth_info['leaf_count']})"
                 cv2.putText(overlay_crop, txt, (10, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
-                
-                cv2.imwrite("result_crop_sam.jpg", overlay_crop)
-                logger.info(f"💾 분할 결과 저장됨: result_crop_sam.jpg")
+
+                success = cv2.imwrite(result_crop_path, overlay_crop)
+                if success:
+                    logger.info(f"💾 분할 결과 저장됨: {result_crop_path}")
+                else:
+                    logger.error(f"❌ 분할 이미지 저장 실패: {result_crop_path}")
+            else:
+                logger.warning("⚠️ Growth info가 없어 분할 이미지를 저장할 수 없습니다")
 
             logger.info("✅ 전체 분석 완료")
         except Exception as e:
-            logger.warning(f"이미지 저장 중 오류: {e}")
+            logger.error(f"❌ 이미지 저장 중 오류: {e}", exc_info=True)
 
 if __name__ == "__main__":
     analyzer = IntegratedBasilAnalyzer()

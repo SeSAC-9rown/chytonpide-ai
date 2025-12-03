@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 app = FastAPI(
     title="Basil Health Analyzer API",
     description="바질 식물 상태 분석 및 엽면적(PLA) 계산 서비스",
-    version="1.0.0",
+    version="1.2.1",
 )
 
 # CORS 설정 (프론트엔드 접근 허용)

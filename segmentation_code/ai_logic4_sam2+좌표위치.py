@@ -19,14 +19,14 @@ warnings.filterwarnings("ignore")
 # [설정] 모델 및 파일 경로
 # ==========================================
 # 1. YOLO 모델 (PLA 계산 및 건강 체크용)
-DET_MODEL_PATH = r"runs\detect\det_exp1\weights\best.pt"
-CLS_MODEL_PATH = r"runs\classify\test1\weights\best.pt"
+DET_MODEL_PATH = r"C:\Users\sega0\Desktop\grwon\git\chytonpide-ai\runs\detect\det_exp1\weights\best.pt"
+CLS_MODEL_PATH = r"C:\Users\sega0\Desktop\grwon\git\chytonpide-ai\runs\classify\test1\weights\best.pt"
 
-# 2. SAM 모델 (가볍고 빠른 Base 모델 사용)
-SAM_MODEL_PATH = "sam2.1_b.pt"
+# 2. SAM 모델 (Large 모델로 성능 향상)
+SAM_MODEL_PATH = "sam2.1_l.pt"
 
 # 3. 테스트할 이미지 경로
-TEST_IMAGE_PATH = r"C:\Users\sega0\Desktop\chytonpide-ai\predict_image\test6.jpg"
+TEST_IMAGE_PATH = r"C:\Users\sega0\Desktop\grwon\git\chytonpide-ai\predict_image\test8.jpg"
 
 # ★★★ [핵심] 사용자가 직접 입력하는 잎의 좌표 (Original Image 기준) ★★★
 # 그림판(Paint) 등에서 마우스를 올려 확인한 [X, Y] 좌표를 입력하세요.
@@ -79,9 +79,11 @@ class ManualBasilAnalyzer:
         else:
             return "🌳 분지 발생", "잎이 10매 이상이며, 곁가지(분지)가 발달하는 단계입니다."
 
-    def _analyze_with_manual_points(self, origin_img_pil):
+    def _analyze_with_manual_points(self, crop_img_pil, crop_bbox=None):
         """
         사용자가 지정한 좌표(MANUAL_LEAF_POINTS)를 SAM에 입력하여 마스크 생성
+        crop_img_pil: 크롭된 바질 이미지 (PIL)
+        crop_bbox: (x1, y1, x2, y2) - 원본 이미지에서의 크롭 좌표
         """
         try:
             if not MANUAL_LEAF_POINTS:
@@ -89,22 +91,47 @@ class ManualBasilAnalyzer:
                 return None
 
             logger.info(f"🔍 사용자 좌표 {len(MANUAL_LEAF_POINTS)}개에 대해 SAM 분석 시작...")
-            
+
             collected_masks = []
-            
+
             # 각 점마다 SAM에게 물어봅니다.
             # (한 번에 다 보내면 하나의 객체로 인식할 수 있어, 루프를 돕니다)
             for i, point in enumerate(MANUAL_LEAF_POINTS):
                 # points=[[x, y]], labels=[1] (1은 전경/Foreground 의미)
-                results = self.sam_model(origin_img_pil, points=[[point]], labels=[1], verbose=False)
-                
-                if results and results[0].masks:
-                    # 마스크 데이터 추출 (가장 높은 신뢰도)
-                    mask_data = results[0].masks.data.cpu().numpy()[0] # (H, W)
-                    collected_masks.append(mask_data)
-                    logger.info(f"   👉 Point {point}: 마스크 생성 성공")
-                else:
-                    logger.warning(f"   ⚠️ Point {point}: SAM이 객체를 찾지 못했습니다.")
+                try:
+                    # 크롭된 이미지 좌표로 변환 (crop_bbox가 있을 경우)
+                    adjusted_point = point
+                    if crop_bbox:
+                        x1, y1, x2, y2 = crop_bbox
+                        adjusted_point = [point[0] - x1, point[1] - y1]
+                        # 크롭 범위 내 좌표인지 확인
+                        if adjusted_point[0] < 0 or adjusted_point[1] < 0 or \
+                           adjusted_point[0] > (x2 - x1) or adjusted_point[1] > (y2 - y1):
+                            logger.warning(f"   ⚠️ Point {point}는 크롭 범위 밖입니다. 스킵합니다.")
+                            continue
+
+                    results = self.sam_model(crop_img_pil, points=[[adjusted_point]], labels=[1], verbose=False)
+
+                    if results and results[0].masks:
+                        # 마스크 데이터 추출 (가장 높은 신뢰도)
+                        mask_tensor = results[0].masks.data.cpu().numpy()
+
+                        # 마스크 차원 확인 및 처리
+                        if mask_tensor.ndim == 3:  # (N, H, W) 형태
+                            mask_data = mask_tensor[0]
+                        elif mask_tensor.ndim == 2:  # (H, W) 형태
+                            mask_data = mask_tensor
+                        else:
+                            logger.warning(f"   ⚠️ Point {point}: 예상치 못한 마스크 차원 {mask_tensor.shape}")
+                            continue
+
+                        collected_masks.append(mask_data)
+                        logger.info(f"   👉 Point {point}: 마스크 생성 성공")
+                    else:
+                        logger.warning(f"   ⚠️ Point {point}: SAM이 객체를 찾지 못했습니다.")
+                except Exception as e:
+                    logger.warning(f"   ⚠️ Point {point} 처리 중 오류: {e}")
+                    continue
 
             # 결과 정리
             leaf_count = len(collected_masks)
@@ -163,29 +190,34 @@ class ManualBasilAnalyzer:
             # 2. YOLO 실행 (Crop 이미지와 mm_per_pixel을 얻기 위함)
             # 수동 분석이므로 YOLO가 실패해도 진행할 수는 있지만, PLA를 위해 실행
             results = self.det_model(origin_img_pil, conf=0.15, verbose=False)
-            
+
             mm_per_pixel = 0.1 # 기본값
             basil_crop_pil = None
             basil_crop_bgr = None
-            
-            if len(results) > 0:
+            crop_bbox = None
+
+            if len(results) > 0 and len(results[0].boxes) > 0:
                 boxes = results[0].boxes
                 cls_ids = boxes.cls.cpu().numpy().astype(int)
                 for i, cls_id in enumerate(cls_ids):
                     x1, y1, x2, y2 = map(int, boxes[i].xyxy[0])
-                    
+
                     if cls_id == 1: # Scale Marker
                         d = max(x2 - x1, y2 - y1)
                         mm_per_pixel = SCALE_REAL_DIAMETER_MM / d
                         logger.info(f"📏 Scale: 1px = {mm_per_pixel:.4f}mm")
-                    
+
                     elif cls_id == 0: # Basil
                         basil_crop_bgr = origin_img_bgr[y1:y2, x1:x2]
                         basil_crop_pil = Image.fromarray(cv2.cvtColor(basil_crop_bgr, cv2.COLOR_BGR2RGB))
+                        crop_bbox = (x1, y1, x2, y2)  # 여기서 crop_bbox 저장
 
-            # 3. [핵심] 사용자가 찍은 좌표로 SAM 분석 실행
-            # (YOLO Crop 이미지가 아니라 '원본 이미지'를 넣습니다)
-            growth_info = self._analyze_with_manual_points(origin_img_pil)
+            # 3. [핵심] 사용자가 찍은 좌표로 SAM 분석 실행 (크롭된 바질 이미지 사용)
+            if basil_crop_pil is not None and crop_bbox is not None:
+                growth_info = self._analyze_with_manual_points(basil_crop_pil, crop_bbox)
+            else:
+                # 바질을 찾지 못한 경우 원본 이미지로 분석
+                growth_info = self._analyze_with_manual_points(origin_img_pil, None)
 
             # 4. 기타 분석 (PLA 등) - 바질을 못 찾았으면 원본 전체로 계산 시도
             if basil_crop_bgr is None:
@@ -217,16 +249,25 @@ class ManualBasilAnalyzer:
     def _save_visualization(self, origin_img, growth_info):
         """결과 저장 (원본 이미지 위에 표시)"""
         try:
+            # 스크립트 파일명 기반으로 저장 디렉토리 생성
+            script_path = os.path.abspath(__file__)
+            script_name = os.path.splitext(os.path.basename(script_path))[0]  # 확장자 제외한 파일명
+            script_dir = os.path.dirname(script_path)
+            output_dir = os.path.join(script_dir, script_name)
+
+            if not os.path.exists(output_dir):
+                os.makedirs(output_dir)
+
             if growth_info and growth_info['mask'] is not None:
                 mask = growth_info['mask']
-                
+
                 # 초록색 마스크
                 color_mask = np.zeros_like(origin_img)
                 color_mask[mask > 0] = [0, 255, 0]
-                
+
                 # 오버레이
                 overlay = cv2.addWeighted(origin_img, 0.7, color_mask, 0.3, 0)
-                
+
                 # 사용자가 찍은 점 표시 (빨간 점)
                 for pt in MANUAL_LEAF_POINTS:
                     cv2.circle(overlay, (pt[0], pt[1]), 5, (0, 0, 255), -1)
@@ -234,9 +275,10 @@ class ManualBasilAnalyzer:
                 # 텍스트
                 txt = f"{growth_info['stage']} (Count: {growth_info['leaf_count']})"
                 cv2.putText(overlay, txt, (30, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
-                
-                cv2.imwrite("result_manual_sam.jpg", overlay)
-                logger.info("💾 결과 저장 완료: result_manual_sam.jpg")
+
+                output_path = os.path.join(output_dir, f"{script_name}_결과.jpg")
+                cv2.imwrite(output_path, overlay)
+                logger.info(f"💾 결과 저장 완료: {output_path}")
         except Exception as e:
             logger.warning(f"시각화 저장 실패: {e}")
 

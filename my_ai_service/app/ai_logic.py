@@ -30,7 +30,7 @@ class BasilAnalyzer:
             self.cls_model = YOLO(str(CLS_MODEL_PATH))  # 분류용
 
             logger.info("🌿 SAM2 (FastSAM) 모델 로딩 중...")
-            sam_model_path = Path(__file__).parent / "weights" / "FastSAM-x.pt"
+            sam_model_path = Path(__file__).parent / "weights" / "FastSAM-s.pt"
             self.sam_model = FastSAM(str(sam_model_path))
 
             logger.info("✅ 모델 로딩 완료!")

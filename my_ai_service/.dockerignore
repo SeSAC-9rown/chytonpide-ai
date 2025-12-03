@@ -1,34 +1,25 @@
-# 문서 파일
-ARCHITECTURE.md
-PROJECT_README.md
-SYSTEM_OVERVIEW.md
-
-# 개발 파일
-main_rails_develop.py
-test_api.py
+__pycache__
 *.pyc
-__pycache__/
-
-# Git 파일
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv
 .git
 .gitignore
-
-# 환경 파일
+.dockerignore
 .env
 .env.local
-
-# Python
-.pytest_cache
 *.egg-info/
 dist/
 build/
-
-# IDE
+.pytest_cache/
+.coverage
+htmlcov/
 .vscode/
 .idea/
 *.swp
 *.swo
-
-# OS
+*~
 .DS_Store
-Thumbs.db
